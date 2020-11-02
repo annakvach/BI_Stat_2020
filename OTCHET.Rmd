@@ -1,0 +1,271 @@
+---
+title: "How old is the mussel?"
+author: "mussel"
+date: "10/24/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Data preparation
+
+This function will check if the package is installed, install if not, and library it anyway. (https://overcoder.net/q/7426/элегантный-способ-проверить-отсутствующие-пакеты-и-установить-их#92357)
+```{r}
+# function
+using <- function(...) {
+    libs <- unlist(list(...))
+    req <- unlist(lapply(libs, require, character.only = TRUE))
+    need <- libs[req == FALSE]
+    if(length(need) > 0){ 
+        install.packages(need)
+        lapply(need, require, character.only = TRUE)
+    }
+}
+```
+
+Install and library all packages.
+```{r message=FALSE}
+
+using("dplyr", "purrr", "tidyr", "ggplot2", "psych", "corrplot")
+
+```
+
+## Сombining data into one dataframe
+First of all we should create function to collect and merge all files with data in one file (.csv) from one folder and create a dataframe for future data preparation. Do not forget to specify  instead of '~/Documents/BI_Stat_2020/BI_Stat_2020/Data/' the path to the you folder with all .csv files with data. 
+```{r}
+# function 
+merge_data_from_directory <- function(directory){
+  list_of_all_files <- dir(directory) #list of all files in directory
+  list_of_all_paths <- paste(directory, list_of_all_files, sep = '/') 
+  merged_data <- do.call(rbind, lapply(list_of_all_paths, read.csv))
+  return(merged_data)
+}
+
+# creating new variable for raw data
+raw_data <- merge_data_from_directory('~/Documents/BI_Stat_2020/BI_Stat_2020/Data/')
+
+# creating new variable for data preparing 
+preparing_data <- raw_data
+```
+
+# Are all data correct?
+## Incorrect entries and uncorrect types
+Next step is to check our data for incorrect entries and uncorrect types. For it we can pay attention on the structure of the data. 
+```{r}
+str(preparing_data)
+# cheking types
+```
+As we see first tree cols are characters. Why? Lets check all cols. We will look at the list with sorted and unique values for each col and incorrect entries will be more notable.
+```{r}
+# creating function
+sorted_and_unique_values <- function(data){
+  my_list <- list()
+  for(i in c(1:ncol(preparing_data))) {
+    sorted_and_unique_values <- sort(unique(preparing_data[, i]), decreasing = T) 
+    my_list[[names(preparing_data)[i]]] <- sorted_and_unique_values
+  }
+  return(my_list)
+}
+
+sorted_and_unique_list <- sorted_and_unique_values(preparing_data)
+
+# checking cols 
+sapply(sorted_and_unique_list, head)
+```
+
+We can cleary see that some values are not ok - some of them contain words and comments instead numbers and NA values. Lets edit them.
+
+```{r}
+
+preparing_data$Rings[preparing_data$Rings == "nine"] <- "9"
+
+preparing_data$Sex..1...male..2...female..3...uvenil.[preparing_data$Sex..1...male..2...female..3...uvenil. == "three"] <- "3"
+preparing_data$Sex..1...male..2...female..3...uvenil.[preparing_data$Sex..1...male..2...female..3...uvenil. == "one"] <- "1"
+preparing_data$Sex..1...male..2...female..3...uvenil.[preparing_data$Sex..1...male..2...female..3...uvenil. == "male"] <- "1"
+
+preparing_data$Length[preparing_data$Length == "No data! I forgot to mesure it!("] <- NA
+
+sorted_and_unique_list <- sorted_and_unique_values(preparing_data)
+
+# checking cols again 
+sapply(sorted_and_unique_list, head)
+
+```
+Next step is to correct types of our first tree variables.
+
+```{r}
+# change the name
+names(preparing_data)[names(preparing_data) == "Sex..1...male..2...female..3...uvenil."] <- "Sex"
+
+# replace the value of the factor variable
+preparing_data$Sex[preparing_data$Sex == "1"] <- "male"
+preparing_data$Sex[preparing_data$Sex == "2"] <- "female"
+preparing_data$Sex[preparing_data$Sex == "3"] <- "uvenil"
+
+# change types
+preparing_data$Sex <- factor(x = preparing_data$Sex, levels = c('uvenil', 'female', 'male'))
+preparing_data$Rings <- factor(x = preparing_data$Rings, levels = c(1:29))
+preparing_data$Length <- as.numeric(preparing_data$Length)
+
+# after correction
+sapply(preparing_data, class)
+```
+Lets see summary for all our variables.
+
+```{r}
+# summary
+summary(preparing_data)
+```
+We can see that minimum value for Height is zero. What does it means? Is it possible parameter for the mollusk? We have to ask about this those who have collected the data and know the physical meaning of the variable Height for the mollusk. If it is impossible we should replace zero value to NA. But since this may be a normal value, we'll leave it as it is for now.
+
+
+## NA values
+How much NA values are in our data?
+```{r}
+# how much NA 
+sum(!complete.cases(preparing_data))
+
+# which rows contain NA?
+NA_preparing_data <- preparing_data[!complete.cases(preparing_data),]
+NA_preparing_data
+
+# which cols contain NA?
+sapply(preparing_data, function(x) sum(is.na(x)))
+```
+As we had 4177 observations in raw data, its will be better to delete 21 rows with NA. Also we can replace NA values for predicted value or mean/mode/median values, but it is not very good way and we have a lot of observations, so we will delete observations with NA.
+```{r}
+data <- na.exclude(preparing_data)
+nrow(data)
+```
+
+## EDA
+# Visualizing variables for outliers and assessment of the presence of relationships between variables
+
+It is necessary to check our data for outliers.
+```{r}
+boxdot_plot_for_all <- data %>%
+  gather(-Sex, -Rings, key = "var", value = "value") %>%
+  ggplot(aes(x = value, y = 1)) +
+  geom_boxplot() +
+  facet_wrap(~ var, scales = "free") +
+  theme_bw() +
+  labs(title="Visualizing variables for outliers")
+
+boxdot_plot_for_all
+```
+We can see that all our variables (except factor variables) have outliers. But what does it mean? Is it some kind of error or important information? 
+
+"Scatter Plot Matrices (SPLOMS) using the pairs.panels function are useful ways to look for strange effects involving outliers and non-linearities."
+
+```{r}
+# Scatter Plot Matrices
+pairs.panels(data[,-2], bg=c("red","yellow","blue")[data$Sex], main = "Mollusca data by variables")
+```
+Heigth variable outliers of the variable are most striking, so we will delete it.
+
+```{r}
+# delete outlires Heigth variable
+data <- data[-c(1287, 995),] #  почему-то это эквивалентно этому - data[-c(1295, 1001),]
+```
+
+Lets look at the Scatter Plot Matrices again.
+```{r}
+# Scatter Plot Matrices without outlires of Heigth variable
+pairs.panels(data[,-2], bg=c("red","yellow","blue")[data$Sex], main = "Mollusca data by variables")
+```
+Distribution of the Heigth variable became much better. 
+
+Distributions of Whole_weight, Shucked_weight, Viscera_weight, Shell_weight have long right tails. 
+
+Since all of these variables (as the name suggests) reflect the size of the sampled molluscs, it can be assumed that large molluscs are rare, as they rarely survive to this size. But the question arises - why do the distributions have no long left tails? Perhaps the fact is that small mollusks were not included in the collection, since it is difficult to find them.
+
+
+
+# Calculation of the mean and standard deviation of the Length variable for mollusks of different sexes.
+```{r}
+aggregate(Length ~ Sex, data = data, FUN = mean)
+```
+```{r}
+aggregate(Length ~ Sex, data = data, FUN =  sd)
+```
+For uvenil Length variable mean ± sd = `r aggregate(Length ~ Sex, data = data, FUN = mean)[1,2]` ± `r aggregate(Length ~ Sex, data = data, FUN = sd)[1,2]`.
+
+For female Length variable mean ± sd = `r aggregate(Length ~ Sex, data = data, FUN = mean)[2,2]` ± `r aggregate(Length ~ Sex, data = data, FUN = sd)[2,2]`.
+
+For male Length variable mean ± sd = `r aggregate(Length ~ Sex, data = data, FUN = mean)[3,2]` ± `r aggregate(Length ~ Sex, data = data, FUN = sd)[3,2]`
+
+# What percentage of molluscs has Height less than 0.165?
+```{r}
+pnorm(0.165, mean = mean(data$Height), sd = sd(data$Height), lower.tail=TRUE) 
+```
+In `r round(pnorm(0.165, mean = mean(data$Height), sd = sd(data$Height), lower.tail=TRUE) *100, 2)`% of observed mollusks, the Height variable does not exceed 0.165
+
+# What is the Length variable greater than 92% of all observations?
+
+```{r}
+qnorm(.92, mean = mean(data$Length), sd = sd(data$Length), lower.tail=TRUE)
+```
+The Length variable greater than 92% of all observations = `r round(qnorm(.92, mean = mean(data$Length), sd = sd(data$Length), lower.tail=TRUE), 2)`
+
+
+# Creating a new variable Lenght_z_scores and save the values of the Length variable into it after it's standardized.
+
+```{r}
+Lenght_z_scores <- (data$Length - mean(data$Length))/sd(data$Length)
+```
+
+# Comparison of the diameter of the molluscs with the number of rings 5 and 15.
+
+```{r}
+data %>% 
+  filter(Rings == 15 | Rings == 5) %>% 
+  ggplot(aes(group = Rings, y = Diameter)) + geom_boxplot() + theme_bw() + labs(title="Plot of Diameter per Rings", x = "Rings", y = "Diameter")
+```
+
+```{r}
+data_r_5_15 <- data %>% 
+  filter(Rings == 15 | Rings == 5) 
+
+aggregate(Diameter ~ Rings, data = data_r_5_15, FUN = mean)
+aggregate(Diameter ~ Rings, data = data_r_5_15, FUN = sd)
+
+round(aggregate(Diameter ~ Rings, data = data_r_5_15, FUN = sd)[1,2], 2)
+
+```
+
+For mollusca 5 rings old Diameter variable mean ± sd = `r round(aggregate(Diameter ~ Rings, data = data_r_5_15, FUN = mean)[1,2], 2)` ± `r round(aggregate(Diameter ~ Rings, data = data_r_5_15, FUN = sd)[1,2], 2)`.
+
+For mollusca 15 rings old Diameter variable mean ± sd = `r round(aggregate(Diameter ~ Rings, data = data_r_5_15, FUN = mean)[2,2], 2)` ± `r round(aggregate(Diameter ~ Rings, data = data_r_5_15, FUN = sd)[2,2], 2)`.
+```{r}
+wilcox_test <- wilcox.test(data = data_r_5_15, Diameter ~ Rings)
+wilcox_test
+wilcox_test$p.value
+```
+
+The parameter value is significantly different for mollusks with 5 rings and 15 rings.
+
+# What's interesting about the Diametr and Whole_weight variables?
+```{r}
+data %>% 
+  ggplot(aes(x = Diameter, y = Whole_weight)) + geom_point() + theme_bw() + labs(title="Plot of Diametr per Whole_weight")
+
+cor_test <- cor.test(data$Diameter, data$Whole_weight, method = "spearman")
+cor_test
+cor_test$p.value
+
+```
+There is a positive correlation between the variables. Correlation = `r cor_test$estimate`. 
+
+
+
+
+
+
+
+
+
+
+

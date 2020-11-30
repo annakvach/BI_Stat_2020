@@ -1,0 +1,164 @@
+---
+title: "OTCHET"
+author: "mussel"
+date: "11/30/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Before data analise
+This function will check if the package is installed, install if not, and library it anyway. (https://overcoder.net/q/7426/элегантный-способ-проверить-отсутствующие-пакеты-и-установить-их#92357)
+```{r}
+# function
+using <- function(...) {
+    libs <- unlist(list(...))
+    req <- unlist(lapply(libs, require, character.only = TRUE))
+    need <- libs[req == FALSE]
+    if(length(need) > 0){ 
+        install.packages(need)
+        lapply(need, require, character.only = TRUE)
+    }
+}
+```
+
+Install and library all packages.
+```{r message=FALSE}
+
+using("MASS", "GGally", "psych", "corrplot", "car", "tidyr", "leaps", "ggplot2")
+
+```
+### Used notation in dataset: 
+* crim - per capita crime rate by town.
+* zn - proportion of residential land zoned for lots over 25,000 sq.ft.
+* indus - proportion of non-retail business acres per town.
+* chas - Charles River dummy variable (= 1 if tract bounds river; 0 otherwise).
+* nox - nitrogen oxides concentration (parts per 10 million).
+* rm - average number of rooms per dwelling.
+* age - proportion of owner-occupied units built prior to 1940.
+* dis - weighted mean of distances to five Boston employment centres.
+* rad - index of accessibility to radial highways.
+* tax - full-value property-tax rate per \$10,000.
+* ptratio - pupil-teacher ratio by town.
+* black - 1000(Bk - 0.63)^2 where Bk is the proportion of blacks by town.
+* lstat - lower status of the population (percent).
+* medv - median value of owner-occupied homes in \$1000s.
+
+The variables in the dataset are measured in different values, which means that standardization should be applied for subsequent adequate comparison.
+## Standartisation
+```{r}
+df_scale <- as.data.frame(sapply(Boston, scale))
+```
+
+## Check dataset
+Are there any NA values in our data?
+```{r}
+# how much NA 
+sum(!complete.cases(df_scale))
+```
+Are there any duplicated rows in our data?
+```{r}
+sum(duplicated(df_scale))
+```
+
+Visualizing variables for outliers and assessment of the presence of relationships between variables
+```{r}
+boxdot_plot_for_all <- df_scale %>%
+  gather(key = "var", value = "value") %>%
+  ggplot(aes(x = value, y = 1)) +
+  geom_boxplot() +
+  facet_wrap(~ var, scales = "free") +
+  theme_bw() +
+  labs(title="Visualizing variables for outliers")
+
+boxdot_plot_for_all
+```
+# Data description
+```{r}
+str(df_scale)
+```
+
+## Data structure
+```{r}
+corrplot(cor(df_scale), method = "number", diag = FALSE, number.cex=0.65)
+```
+Some predicters are correlated with each other. Likely we will remove some of them during next steps.
+
+
+## Linear regression model
+```{r}
+model_1 <- lm(medv ~ ., data = df_scale)
+summary(model_1)
+```
+Variables indus and age seem to be insignificant. 
+
+## Normality
+```{r}
+qqPlot(model_1, labels=row.names(Boston), id.method = "identity", simulate = T, main = "Q-Q Plot")
+```
+Distribution of studentized residuals:
+```{r}
+
+sresid <- studres(model_1)
+
+hist(sresid, freq = FALSE, main = "Distribution of Studentized Residuals")
+xfit <-seq(min(sresid), max(sresid), length = 30)
+yfit <- dnorm(xfit)
+lines(xfit, yfit)
+```
+
+
+We have two outliers - 369 and 372, and some problems on the line ends.
+
+## Non-independence
+```{r}
+durbinWatsonTest(model_1)
+```
+As the Durbin-Watson test has the null hypothesis that the autocorrelation of the disturbances is 0, we can conclude that there are autocorrelation in this model. 
+
+
+## Influential observations
+```{r}
+ggplot(model_1, aes(x = 1:nrow(df_scale), y = .cooksd)) + 
+  geom_bar(stat = "identity")
+```
+
+```{r}
+influencePlot(model_1, main = "Influence Plot", sub = "Circle size is proportial to Cook's Distance" )
+```
+There are several very influence observations.
+
+## Linearity
+```{r}
+plot(model_1, which = 1, main = "Residual vs Fitted")
+```
+
+Linearity is violated, it seems we have a quadratic relationship.
+
+```{r}
+model <- lm(medv ~ lstat, df_scale) 
+
+pred.int <- predict(model, interval = "prediction")
+mydata <- cbind(df_scale, pred.int)
+
+plot <- ggplot(mydata, aes(lstat, medv)) +
+  geom_point() +
+  stat_smooth(method = lm)
+
+plot + geom_line(aes(y = lwr), color = "red", linetype = "dashed")+
+    geom_line(aes(y = upr), color = "red", linetype = "dashed")
+```
+
+```{r}
+summary(model)
+```
+
+medv = -4.798e-16 - 7.377e-01 * lstat
+
+The regression coefficient (-0.7377) is statistically significantly different from zero ( p < 2∙10^-16) and means that for each percentage of non-status presenters in the population, a price will decrease on 0.7377 thousand dollars.
+
+
+
+

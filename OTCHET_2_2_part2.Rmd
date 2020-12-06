@@ -1,0 +1,244 @@
+---
+title: "part II"
+author: "part II"
+date: "11/30/2020"
+output: 
+  html_document:
+    toc: true 
+    toc_depth: 4  
+    theme: united  
+    highlight: tango  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+  To understand what the most desirable area looks like for housing, we decided to analyze which parameters of the area most strongly affect the price of houses located in them. We used data about housing values in suburbs of Boston.
+  
+  
+  
+##### Used notation: 
+
+* crim - per capita crime rate by town.
+* zn - proportion of residential land zoned for lots over 25,000 sq.ft.
+* indus - proportion of non-retail business acres per town.
+* chas - Charles River dummy variable (= 1 if tract bounds river; 0 otherwise).
+* nox - nitrogen oxides concentration (parts per 10 million).
+* rm - average number of rooms per dwelling.
+* age - proportion of owner-occupied units built prior to 1940.
+* dis - weighted mean of distances to five Boston employment centres.
+* rad - index of accessibility to radial highways.
+* tax - full-value property-tax rate per \$10,000.
+* ptratio - pupil-teacher ratio by town.
+* black - 1000(Bk - 0.63)^2 where Bk is the proportion of blacks by town.
+* lstat - lower status of the population (percent).
+* medv - median value of owner-occupied homes in \$1000s.
+
+  
+# Before data analise
+This function will check if the package is installed, install if not, and library it anyway. (https://overcoder.net/q/7426/элегантный-способ-проверить-отсутствующие-пакеты-и-установить-их#92357)
+```{r}
+# function
+using <- function(...) {
+    libs <- unlist(list(...))
+    req <- unlist(lapply(libs, require, character.only = TRUE))
+    need <- libs[req == FALSE]
+    if(length(need) > 0){ 
+        install.packages(need)
+        lapply(need, require, character.only = TRUE)
+    }
+}
+```
+
+Install and library all packages.
+```{r message=FALSE}
+using("dplyr", "vegan", "grid", "ggrepel", "MASS", "GGally", "psych", "corrplot", "tidyr", "car", "leaps", "ggplot2")
+```
+
+# Data analise 
+
+```{r}
+df <- Boston
+```
+
+## nMDS Ordination
+
+For an initial and unbiased assessment of the data, we used Nonmetric multidimensional scaling (nMDS) This allowed us to test and, as a result, refute the hypothesis that there is a certain ideal area, for a house in which people will be willing to pay big money. nMDS allowed us to see that the houses with the highest value are not grouped into a single cluster in the space of all parameters of the area.
+
+### Preparing data for nMDS Ordination
+```{r}
+nmds_data <- metaMDS(df, distance = "bray", autotransform = FALSE)
+nmds_data
+nmds_data_ggplot <- as.data.frame(scores(nmds_data, display = "sites"))
+
+```
+
+### nMDS Ordination plot
+
+```{r}
+nmds_plot <- ggplot(data = nmds_data_ggplot, aes(NMDS1, NMDS2)) + 
+  geom_point(aes(colour = Boston$medv), alpha = 0.7) + 
+ 
+  labs(title = "nMDS ordination with suburbs parameters", subtitle = "Stress = 0.079") +
+  labs(colour = "Housing values") +
+  theme_classic()
+
+nmds_plot
+```
+On this plot each dot is a house located in the space of suburbs signs. The color of dot depends on the value of the house - the lightest are the most expensive. We can find light dots in different parts of the plot, so there are no pronounced cluster of expensive houses. 
+
+## Linear regression model
+
+For a more detailed analysis of the impact of neighborhood features on the value of houses, we use a multiple linear model. From the previous report, we know that the full model disregarding predictor interactions is not very good, so we will try to find out which parameters affect the price and how.
+
+### Building full linear regression model
+```{r}
+
+df_scale <- as.data.frame(scale(df))
+
+names(Boston)
+
+model_1 <- lm(medv ~ ., data = df_scale)
+summary(model_1)
+```
+Variables indus and age seem to be insignificant. 
+
+### Regression with stepwise elimination of variables
+
+#### Backward
+
+```{r}
+fit_backward <- stepAIC(model_1, direction = "backward")
+fit_backward
+```
+
+Variables indus and age were removed.
+
+#### Forward
+
+```{r}
+#Variable selection using stepwise regression
+null_fit <- lm(medv ~ 1, data = df_scale)
+full_fit <- model_1
+
+#forward selection
+fit_forward <- step(null_fit, scope = list(upper = full_fit, lower = null_fit), direction = "forward")
+fit_forward
+```
+It is also better without variables indus and age.
+
+#### Both
+
+```{r}
+stepAIC(model_1, direction = "both")
+```
+### Regression over all subsets
+
+```{r}
+fit_leaps <- regsubsets(medv ~ ., data = df_scale, nbest = 1)
+
+plot(fit_leaps, scale = "adjr2", main = "Adjusted R^2")
+
+```
+
+The highist Adjusted R-sq is for the model without variables crim, indus, age, rad, tax. So we will leave rm, ptratio and Istat.
+
+
+```{r}
+model_2 <- lm(medv ~ rm + lstat + ptratio, data = df_scale)
+summary(model_2)
+```
+
+### Tests for model 1
+
+#### Normality
+```{r}
+qqPlot(model_2, labels=row.names(Boston), id.method = "identity", simulate = T, main = "Q-Q Plot")
+```
+
+```{r}
+# Distribution of studentized residuals
+sresid <- studres(model_2)
+
+hist(sresid, freq = FALSE, main = "Distribution of Studentized Residuals")
+xfit <-seq(min(sresid), max(sresid), length = 30)
+yfit <- dnorm(xfit)
+lines(xfit, yfit)
+```
+
+#### Influential observations
+
+```{r}
+ggplot(model_2, aes(x = 1:nrow(df_scale), y = .cooksd)) + 
+  geom_bar(stat = "identity") + 
+  theme_classic()
+```
+
+
+```{r}
+influencePlot(model_2, main = "Influence Plot", sub = "Circle size is proportial to Cook's Distance" )
+```
+
+
+#### Linearity
+```{r}
+plot(model_2, which = 1, main = "Residual vs Fitted")
+```
+
+### Tests for model 2
+
+```{r}
+df_3 <- df_scale[-c(365,366,368, 369, 370, 371, 372, 373, 375, 413),]
+model_3 <- lm(medv ~ rm + lstat + ptratio, data = df_3)
+summary(model_3)
+```
+	
+
+#### Normality
+```{r}
+qqPlot(model_3, labels=row.names(Boston), id.method = "identity", simulate = T, main = "Q-Q Plot")
+```
+Distribution of studentized residuals:
+```{r}
+
+sresid <- studres(model_3)
+
+hist(sresid, freq = FALSE, main = "Distribution of Studentized Residuals")
+xfit <-seq(min(sresid), max(sresid), length = 30)
+yfit <- dnorm(xfit)
+lines(xfit, yfit)
+```
+
+
+#### Influential observations
+```{r}
+ggplot(model_3, aes(x = 1:nrow(df_3), y = .cooksd)) + 
+  geom_bar(stat = "identity") + 
+  theme_classic()
+```
+
+```{r}
+influencePlot(model_3, main = "Influence Plot", sub = "Circle size is proportial to Cook's Distance" )
+```
+
+
+#### Linearity
+```{r}
+plot(model_3, which = 1)
+```
+
+
+```{r}
+summary(model_3)
+```
+
+medv = 0.04161 + 0.46243 * rm - 0.36172 * lstat - 0.24169 * ptratio (p < 2e-16)
+
+# Results 
+
+To increase the price of a house, it is necessary to build it in an suburb with low percent of lower status men and pupil-teacher ratio by town rates. The large number of rooms in the house increases the price for it.
+	
+
+
+

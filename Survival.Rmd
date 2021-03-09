@@ -1,0 +1,364 @@
+---
+title: "Survival"
+output: 
+  html_document:
+    toc: true 
+    toc_depth: 4  
+    theme: united  
+    highlight: tango  
+---
+
+
+# Data Dictionary 
+
+Survival in a randomised trial comparing two treatments for ovarian cancer
+
+
+futime:	  survival or censoring time
+
+fustat:	  censoring status
+
+age:	    in years
+
+resid.ds:	residual disease present (1=no,2=yes)
+
+rx:	      treatment group
+
+ecog.ps:	ECOG performance status 
+
+ECOG: 
+
+https://ecog-acrin.org/resources/ecog-performance-status 
+
+  1 - Restricted in physically strenuous activity but ambulatory and 
+  
+  able to carry out work of  a light or sedentary nature, e.g., 
+  
+  light house work, office work     
+  
+  2 - Ambulatory and capable of all selfcare but unable to carry out 
+  
+  any work activities; up and about more than 50% of waking hours
+
+# Packages
+
+For package installation we used function from - <https://stackoverflow.com/a/31620488>. 
+
+It will check for missing packages and install them + it will query both - CRAN and Bioconductor repositories for missing package.
+
+```{r}
+install.packages.auto <- function(x) { 
+  x <- as.character(substitute(x)) 
+  if(isTRUE(x %in% .packages(all.available=TRUE))) { 
+    eval(parse(text = sprintf("require(\"%s\")", x)))
+  } else { 
+    #update.packages(ask= FALSE) #update installed packages.
+    eval(parse(text = sprintf("install.packages(\"%s\", dependencies = TRUE)", x)))
+  }
+  if(isTRUE(x %in% .packages(all.available=TRUE))) { 
+    eval(parse(text = sprintf("require(\"%s\")", x)))
+  } else {
+    source("http://bioconductor.org/biocLite.R")
+    #biocLite(character(), ask=FALSE) #update installed packages.
+    eval(parse(text = sprintf("biocLite(\"%s\")", x)))
+    eval(parse(text = sprintf("require(\"%s\")", x)))
+  }
+}
+
+```
+
+
+## Install 
+
+```{r}
+install.packages.auto("survival")
+install.packages.auto("dplyr")
+install.packages.auto("ggplot2")
+install.packages.auto("tidyr")
+# install.packages.auto("expss")
+install.packages.auto("vcd")
+install.packages.auto("corrplot")
+```
+
+install.packages("expss")
+
+
+## Library
+
+```{r}
+library(survival)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+# library(expss)
+# library(plyr)
+library(ggpubr)
+library(vcd)
+library(corrplot)
+
+```
+## Plot themes
+
+```{r}
+theme_set(theme_pubr())
+```
+
+
+# Data analise
+
+## EDA
+
+```{r}
+df_raw <- (ovarian)
+df <- (ovarian)
+head(df)
+```
+
+
+### NA 
+
+```{r}
+colSums(is.na(df))
+```
+
+No values in daatset.
+
+### Check data type
+
+```{r}
+str(df)
+summary(df)
+```
+
+```{r}
+df$fustat <- as.factor(df$fustat)
+df$resid.ds <- factor(df$resid.ds, levels = c("1", "2"), labels = c("Yes", "No"))
+df$rx <- factor(df$rx,  levels = c("1", "2"), labels = c("A", "B"))
+df$ecog.ps <- factor(df$ecog.ps, levels = c("1", "2"), labels = c("I", "II"))
+
+str(df)
+```
+
+### General statistics 
+
+```{r}
+summary(df)
+```
+
+Dataset:
+
+  * There are data on 26 patients
+  
+  * Out of 26 patients, for 14 data are censored
+  
+  * Residual disease is not present in 15 patients and present in 11 patients
+  
+  * 14 patients can do only light sedentary work and restricted in physically strenuous 
+  
+  * and 12 patients capable of all selfcare but unable to carry out any work activities
+  
+  * Patients groups divided by type of Treatment type are balanced (A: 13 and B: 13)
+  
+  * The youngest patient - 38, the oldest patient - 74
+  
+  * Minimum patient follow-up time - 59, maximum patient follow-up time - 1227
+
+
+### Mosaicplot
+
+This graph clearly demonstrates the number of patients in groups
+
+distinguished according to the characteristics: type of treatment (rx), 
+
+presence/absence of residual disease ("resid.ds), ECOG status (ecog.ps), 
+
+is the data censored at the moment (fustat).
+
+
+```{r}
+mosaic( ~ rx + fustat + ecog.ps + resid.ds, data = df,
+         highlighting = "resid.ds", 
+        highlighting_fill = c("pink", "lightblue"),
+        labeling = labeling_values,
+        main = "Dataset subgroups",
+        sub = "Red - residual disease present, Blue residual disease not present")
+```
+
+### Barplots and boxplots
+
+```{r}
+
+age_boxplot <- ggboxplot(df, x = "rx", y = "age", 
+          ylab = "Age", 
+          xlab = "Treatment group",
+          color = "rx", 
+          palette = "jco",
+          add = "dotplot",  
+          add.params = list(dotsize = 0.6),
+          rotate = TRUE)
+
+
+age_barplot <- ggplot(df, aes(x = rx, y = age, fill = age)) + 
+  geom_bar(stat = "identity") +
+  coord_flip() + 
+  scale_fill_gradient(low='yellow', high='slateblue4', space='Lab') + 
+  xlab("") + 
+  ylab("Age") + 
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        legend.position="right")
+
+futime_boxplot <- ggboxplot(df, x = "rx", y = "futime", 
+          ylab = "Futime", 
+          xlab = "Treatment group",
+          color = "rx", 
+          palette = "jco",
+          add = "dotplot",  
+          add.params = list(dotsize = 0.6),
+          rotate = TRUE)
+
+
+futime_barplot <- ggplot(df, aes(x = rx, y = futime, fill = futime)) + 
+  geom_bar(stat = "identity") +
+  coord_flip() + 
+  scale_fill_gradient(low='yellow', high='slateblue4', space='Lab') + 
+  xlab("") + 
+  ylab("Futime") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank(),
+        legend.position="right")
+
+
+
+fig_1 <- ggarrange(age_boxplot, age_barplot, 
+                   futime_boxplot, futime_barplot,
+                   labels = c("A", "B", "C", "D"),
+                   ncol = 2, nrow = 2)
+fig_1
+
+
+```
+
+
+* The average age of patients treated with different drugs is approximately the same.However, the range of ages in group A is much greater than in group B (Pic. A-B)
+
+* The average follow-up time for patients taking different treatments varies slightly. Patients from group B, in which the range of ages is less, were observed on average a little longer
+
+
+### Correlation
+
+Based on http://www.sthda.com/english/wiki/visualize-correlation-matrix-using-correlogram
+
+
+To compute the matrix of p-value:
+
+```{r}
+# mat : is a matrix of data
+# ... : further arguments to pass to the native R cor.test function
+cor.mtest <- function(mat, ...) {
+    mat <- as.matrix(mat)
+    n <- ncol(mat)
+    p.mat<- matrix(NA, n, n)
+    diag(p.mat) <- 0
+    for (i in 1:(n - 1)) {
+        for (j in (i + 1):n) {
+            tmp <- cor.test(mat[, i], mat[, j], ...)
+            p.mat[i, j] <- p.mat[j, i] <- tmp$p.value
+        }
+    }
+  colnames(p.mat) <- rownames(p.mat) <- colnames(mat)
+  p.mat
+}
+# matrix of the p-value of the correlation
+p.mat <- cor.mtest(df_raw)
+head(p.mat)
+```
+
+```{r}
+col <- colorRampPalette(c("#BB4444", "#EE9988", "#FFFFFF", "#77AADD", "#4477AA"))
+
+
+corrplot(cor(df_raw), method="color", col=col(200),  
+         type="lower", order="hclust", 
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col="black", tl.srt=45, #Text label color and rotation
+         # Combine with significance
+         p.mat = p.mat, sig.level = 0.05, insig = "blank", 
+         # hide correlation coefficient on the principal diagonal
+         diag=FALSE 
+         )
+```
+
+
+* Positively correlated with each other - age of the patient and data censored or not at the moment. 
+
+* Negatively correlated with each other - data censored or not at the moment and patient follow-up time. 
+
+* Also negatively correlated with each other - patient follow-up time and age. 
+
+For some reason, older patients were seen less by researchers.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

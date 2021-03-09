@@ -78,6 +78,8 @@ install.packages.auto("tidyr")
 # install.packages.auto("expss")
 install.packages.auto("vcd")
 install.packages.auto("corrplot")
+install.packages.auto("survminer")
+install.packages.auto("ggfortify")
 ```
 
 install.packages("expss")
@@ -95,6 +97,8 @@ library(tidyr)
 library(ggpubr)
 library(vcd)
 library(corrplot)
+library(survminer)
+library(ggfortify) 
 
 ```
 ## Plot themes
@@ -131,8 +135,8 @@ summary(df)
 ```
 
 ```{r}
-df$fustat <- as.factor(df$fustat)
-df$resid.ds <- factor(df$resid.ds, levels = c("1", "2"), labels = c("Yes", "No"))
+# df$fustat <- as.factor(df$fustat)
+df$resid.ds <- factor(df$resid.ds, levels = c("1", "2"), labels = c("No", "Yes"))
 df$rx <- factor(df$rx,  levels = c("1", "2"), labels = c("A", "B"))
 df$ecog.ps <- factor(df$ecog.ps, levels = c("1", "2"), labels = c("I", "II"))
 
@@ -301,64 +305,131 @@ corrplot(cor(df_raw), method="color", col=col(200),
 For some reason, older patients were seen less by researchers.
 
 
+## Kaplan–Meier + logrank_test
+
+```{r}
+km <- with(df, Surv(futime, fustat))
+km
+```
+
+### Survival factor based on time
+
+```{r}
+km_fit <- survfit(Surv(futime, fustat) ~ 1, data = df)
+
+autoplot(km_fit) +
+  labs(title = "Survival factor based on time")
+
+```
+
+### Survival factor based on time + Treatment type
+
+```{r}
+km_rx_fit <- survfit(Surv(futime, fustat) ~ rx, data=df)
+summary(km_rx_fit)
 
 
+autoplot(km_rx_fit) 
 
 
+survdiff(Surv(df$futime, df$fustat) ~ rx, data = df)
+logrank_test(Surv(df$futime, df$fustat) ~ rx, data = df)
 
 
+```
+
+* Patients treated according to protocol "B" had a longer follow-up time (survival rate is higher)
 
 
+### Survival factor based on time + Age
+
+```{r}
+df_new <- df %>% mutate(age_factor = ifelse(age >=56, ">56", "<56"))
+df_new$age_factor <- as.factor(df_new$age_factor)
 
 
+```
+
+```{r}
+km_age <- survfit(Surv(futime, fustat) ~ age_factor, data=df_new)
+
+summary(km_age)
+
+autoplot(km_age) 
 
 
+survdiff(Surv(df$futime, df$fustat) ~ age_factor, data = df_new)
+logrank_test(Surv(df$futime, df$fustat) ~ age_factor, data = df_new)
 
+```
 
+* Patients whose age is below average (<56) had a longer follow-up (survival rate is higher)
 
-
-
-
-
-
-
-
-
-
+### Survival factor based on time + ECOG status
 
 
 ```{r}
+km_ecog <- survfit(Surv(futime, fustat) ~ ecog.ps, data=df)
+
+autoplot(km_ecog) 
+
+summary(km_ecog)
+
+
+survdiff(Surv(df$futime, df$fustat) ~ ecog.ps, data = df)
+logrank_test(Surv(df$futime, df$fustat) ~ ecog.ps, data = df)
 
 ```
 
 
+* Patients in worse condition (ECOG II) had a shoter follow-up time (survival rate is lower)
+
+
+### Survival factor based on time + resid.ds
+
+
 ```{r}
+km_resid_ds <- survfit(Surv(futime, fustat) ~ resid.ds, data=df)
+
+autoplot(km_resid_ds) 
+
+summary(km_resid_ds)
+
+
+survdiff(Surv(df$futime, df$fustat) ~ resid.ds, data = df)
+logrank_test(Surv(df$futime, df$fustat) ~ resid.ds, data = df)
 
 ```
 
+* Patients with residual disease had a shoter follow-up time (survival rate is lower)
 
 
 
+### Cox
+
+```{r}
+cox <- coxph(formula = Surv(futime, fustat) ~ age_factor  + rx + resid.ds, data = df_new)
+summary(cox)
+
+```
+```{r}
+cox_fit <- survfit(cox)
+plot(cox_fit)
+```
 
 
+```{r, message=FALSE}
+aa_fit <- aareg(formula = Surv(futime, fustat) ~ age_factor + rx + resid.ds, data = df_new)
+autoplot(aa_fit)
+```
 
 
+## Hazard Ratio
 
+```{r}
+fit.coxph <- coxph(Surv(futime, fustat) ~ age_factor + rx + resid.ds, data = df_new)
+ggforest(fit.coxph, data = df_new)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+```
 
 

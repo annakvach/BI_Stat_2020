@@ -1,11 +1,14 @@
 ---
 title: "Survival"
-output: 
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '4'
   html_document:
-    toc: true 
-    toc_depth: 4  
-    theme: united  
-    highlight: tango  
+    toc: yes
+    toc_depth: 4
+    theme: united
+    highlight: tango
 ---
 
 
@@ -75,7 +78,7 @@ install.packages.auto("survival")
 install.packages.auto("dplyr")
 install.packages.auto("ggplot2")
 install.packages.auto("tidyr")
-# install.packages.auto("expss")
+install.packages.auto("ggpubr")
 install.packages.auto("vcd")
 install.packages.auto("corrplot")
 install.packages.auto("survminer")
@@ -92,8 +95,7 @@ library(survival)
 library(dplyr)
 library(ggplot2)
 library(tidyr)
-# library(expss)
-# library(plyr)
+
 library(ggpubr)
 library(vcd)
 library(corrplot)
@@ -408,7 +410,7 @@ logrank_test(Surv(df$futime, df$fustat) ~ resid.ds, data = df)
 ### Cox
 
 ```{r}
-cox <- coxph(formula = Surv(futime, fustat) ~ age_factor  + rx + resid.ds, data = df_new)
+cox <- coxph(formula = Surv(futime, fustat) ~ age_factor  + rx + resid.ds + ecog.ps, data = df_new)
 summary(cox)
 
 ```
@@ -419,7 +421,7 @@ plot(cox_fit)
 
 
 ```{r, message=FALSE}
-aa_fit <- aareg(formula = Surv(futime, fustat) ~ age_factor + rx + resid.ds, data = df_new)
+aa_fit <- aareg(formula = Surv(futime, fustat) ~ age_factor + rx + resid.ds + ecog.ps, data = df_new)
 autoplot(aa_fit)
 ```
 
@@ -427,9 +429,10 @@ autoplot(aa_fit)
 ## Hazard Ratio
 
 ```{r}
-fit.coxph <- coxph(Surv(futime, fustat) ~ age_factor + rx + resid.ds, data = df_new)
+fit.coxph <- coxph(Surv(futime, fustat) ~ age_factor + rx + resid.ds + ecog.ps, data = df_new)
 ggforest(fit.coxph, data = df_new)
 
 ```
 
+** Younger patients, without residual disease, in better condition (ECOG II) and treated according to protocol "B", have better chances of survival.*
 

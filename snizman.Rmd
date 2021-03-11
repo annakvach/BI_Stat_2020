@@ -1,0 +1,72 @@
+---
+title: "snizman"
+  html_document:
+    toc: yes
+    toc_depth: 4
+    theme: united
+    highlight: tango
+---
+
+
+https://rpubs.com/cursingwords/Raw-Data-23-and-Me-Analysis-Part-1 
+
+# Packages
+
+For package installation we used function from - <https://stackoverflow.com/a/31620488>. 
+
+It will check for missing packages and install them + it will query both - CRAN and Bioconductor repositories for missing package.
+
+```{r}
+install.packages.auto <- function(x) { 
+  x <- as.character(substitute(x)) 
+  if(isTRUE(x %in% .packages(all.available=TRUE))) { 
+    eval(parse(text = sprintf("require(\"%s\")", x)))
+  } else { 
+    #update.packages(ask= FALSE) #update installed packages.
+    eval(parse(text = sprintf("install.packages(\"%s\", dependencies = TRUE)", x)))
+  }
+  if(isTRUE(x %in% .packages(all.available=TRUE))) { 
+    eval(parse(text = sprintf("require(\"%s\")", x)))
+  } else {
+    source("http://bioconductor.org/biocLite.R")
+    #biocLite(character(), ask=FALSE) #update installed packages.
+    eval(parse(text = sprintf("biocLite(\"%s\")", x)))
+    eval(parse(text = sprintf("require(\"%s\")", x)))
+  }
+}
+
+```
+
+
+## Install 
+
+
+
+```{r}
+# BiocManager::install("gwascat")
+install.packages.auto("kableExtra")
+install.packages.auto("tidystringdist")
+install.packages.auto("tidyverse")
+install.packages.auto("vcfR")
+```
+
+
+```{r}
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(gwascat)
+library(stringr)
+library(kableExtra)
+library(tidystringdist)
+library(tidyverse)
+library(vcfR)
+```
+
+# Load Data
+
+genome_raw <- read.vcfR("C:/Users/aykva.LAPTOP-L8O42HR6.000/Documents/r_projects/snizman/snp_raw_v4_full_2017.vcf")
+
+
+head(genome_raw)
+
